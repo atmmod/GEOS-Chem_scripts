@@ -1,3 +1,35 @@
+#  This run directory was created with:
+#  /glade/work/sakinjole/GCClassic.13.4.1/src/GEOS-Chem/run/GCClassic/createRunDir.sh.
+# 
+#  GEOS-Chem repository version information:
+# 
+#   Remote URL: https://github.com/geoschem/geos-chem.git
+#   Branch: full_hyd
+#   Commit: Changes made to several routines to complete the mixing layer section for testing purposes
+#   Date: Thu Mar 23 16:38:34 2023 -0600
+#   User: Samuel Akinjole
+#   Hash: 48b0654f6
+# 
+# 
+# Changes to the following run directory files are tracked by git:
+# 
+#  [master (root-commit) abfef79] Initial run directory
+#  12 files changed, 12342 insertions(+)
+#  create mode 100644 CreateRunDirLogs/rundir_vars.txt
+#  create mode 100644 HEMCO_Config.rc
+#  create mode 100644 HEMCO_Diagn.rc
+#  create mode 100644 HISTORY.rc
+#  create mode 100755 archiveRun.sh
+#  create mode 100755 cleanRunDir.sh
+#  create mode 100755 download_data.py
+#  create mode 100644 download_data.yml
+#  create mode 100644 geoschem_config.yml
+#  create mode 100755 getRunInfo
+#  create mode 100755 metrics.py
+#  create mode 100644 species_database.yml
+# 
+# 
+#  IMPORTANT: ONLY USE THESE RUNDIR SETTINGS WITH THIS COMMIT!
 RUNDIR_GC_MODE='GCClassic'
 RUNDIR_DATA_ROOT=/glade/work/sakinjole/ExtData
 RUNDIR_SIM_NAME=fullchem
