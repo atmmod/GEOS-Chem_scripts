@@ -701,21 +701,11 @@ def sum_rel(base, pert, pert_specie, useless):
 
     	else:
     		mask = base[i][:,:,:,:] != 0  # Create a mask to avoid division by zero
-    		#base_mask = base[i][:,:,:,:][mask]
-    		#array[ct, :, :, :, :] =(pert[i][:,:,:,:] - base[i][:,:,:,:][mask]) /base[i][:,:,:,:][mask]
-    		#array[ct] = (pert[i][:,:,:,:] - denominator) / denominator  # relative difference
-    		#array[ct][~mask] = 0 # Set relative difference to zero where the denominator is zero
+
     		array[ct, :, :, :, :] = np.where(mask, (pert[i][:, :, :, :] - base[i][:,:,:,:]) / base[i][:,:,:,:], 0)  # relative difference
     		#array[ct, :, :, :, :][:, ~mask] = 0  
     	ct += 1
         	
-       		
-        	
-        
-    		# array[ct, :, :, :, :] =(pert[i][:,:,:,:] - base[i][:,:,:,:]) /base[i][:,:,:,:]  #relative difference
-#     		#add variable name to list:
-#     		#specie.append(i)
-#     	ct += 1
     
     return array 
     
@@ -746,13 +736,6 @@ def sum_reln(base, pert, pert_specie, useless):
     		#array[ct, :, :, :, :][:, ~mask] = 0  
     	ct += 1
         	
-       		
-        	
-        
-    		# array[ct, :, :, :, :] =(pert[i][:,:,:,:] - base[i][:,:,:,:]) /base[i][:,:,:,:]  #relative difference
-#     		#add variable name to list:
-#     		#specie.append(i)
-#     	ct += 1
     
     return array 
 
@@ -1082,113 +1065,9 @@ coarsemask2 = ipercent2['Coarsemask'][:,:,:,:].values
 coarsemask2b = ipercent2b['Coarsemask'][:,:,:,:].values
 coarsemask2f = ipercent2f['Coarsemask'][:,:,:,:].values
 
-#Define mask variables:
-#fine_mask_hyd1 = ipercent['Finemask'] 
-# # 
-# # Print the indices
-# print("Indices with negative values:")
-# print(negative_indices)
-# 
-# print("Elements which are negative values") 
-# 
-# array_new = hyd_sensf[251, 2, :, :, :]
-# print(array_new[negative_indices])
-# 
-# print("Indices with negative values:")
-# for dim, indices in enumerate(negative_indices):
-#     print(f"Dimension {dim}: {indices}")
 
-#Test to be sure you got the write array
-#print("Testing the index 19, 71")
-#print(hyd_sensf[251, 1, 26, 19, 71])
-
-# print("finite sensitivity of CO at layer 0 and index 19, 71")
-# print(fd_sensf[251, -1, 0, 19, 71])
-# 
-# print("Hyd sensitivity of CO at layer 0 and index 19, 71")
-# print(hyd_sensf[251, -1, 0, 19, 71])
-# 
-# print("finite sensitivity of CO at layer 26 and index 19, 71")
-# print(fd_sensf[251, -1, 26, 19, 71])
-# 
-# print("Hyd sensitivity of CO at layer 26 and index 19, 71")
-# print(hyd_sensf[251, -1, 26, 19, 71])
-# 
-# hyd_sensc, shape, specie_hydc = hyd_cross_sensitivity(hyd_dx1x2c, 'SpeciesConcdx1x2_' +specie1, useless, hyd_pert=1)
-# fd_sensc, shape, speciec = hybrid_cross_sensitivity(ref_realc, ref_pertc, 'SpeciesConcdx2_' + specie1, 'semi', useless, hc, h=1)
-
-#anal_sens, shape, speciea = analytical_second_order(ref_realf, 'SpeciesConc_CO', useless)
-
-#fd_sens = hybrid_cross_sensitivity(ref_real, ref_pert, 1)
-#hyd_sens = hyd_cross_sensitivity(hyd_pert, 1)
 
 #to store dimensions!
 shaped = ref_realf['SpeciesConc_CO'].isel(time=0, lev=0)
-
-#For the sum plots:
-#Below lines not needed any more:
-#First Calculate the difference species conc
-# array1 = sum_abs(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-# 
-# #Calculate the difference aerosolmass
-# array2 = sum_abs(default_file2, hyd_file2, 'PM10', useless)
-# 
-# #Sum check for NH4 and NIT
-# array3 = sum_check(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-# 
-# #Calculate the relative difference for species conc
-# array4 = absrel(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-# 
-# #Calculate the relative difference aerosolmass
-# array5 = absrel(default_file2, hyd_file2, 'PM10', useless)
-# 
-# # Calculate the sum of absolute differences across all data variables
-# sum_diff1 = np.sum(np.abs(array1))
-# sum_diff2 = np.sum(np.abs(array2))
-# sum_diff3 = np.sum(np.abs(array3))
-# 
-# #Obtain the max absolute relative difference:
-# #first obtain finite values:
-# finite_values1 = np.isfinite(array4)
-# finite_values2 = np.isfinite(array5)
-# # max_diff1 = np.max(np.abs(array4.where(finite_values1).values))
-# # max_diff2 = np.max(np.abs(array5.where(finite_values2).values))
-# max_diff1 = np.max(np.abs(array4[finite_values1]))
-# max_diff2 = np.max(np.abs(array5[finite_values2]))
-# 
-# #Obtain the min absolute relative difference:
-# # min_diff1 = np.min(np.abs(array4.where(finite_values1).values))
-# # min_diff2 = np.min(np.abs(array5.where(finite_values2).values))
-# min_diff1 = np.min(np.abs(array4[finite_values1]))
-# min_diff2 = np.min(np.abs(array5[finite_values2]))
-# 
-# 
-# # # Specify the output filename
-# # output_filename = 'sum_diff.txt'
-# # 
-# # # Save the sum_diff to the text file
-# # save_sum_diff_to_file(sum_diff, output_filename)
-# 
-# #Print the absolute difference to the command window
-# print('sum of the abs of def - hyd species conc')
-# print(sum_diff1)
-# print('sum of the abs of def - hyd aerosol mass')
-# print(sum_diff2)
-# print('sum of the abs of def - hyd for NH4 and NIT in ppb')
-# print(sum_diff3)
-# 
-# #Sum of base 
-# 
-# #Sum diff of 1 divided by sum of base to give the relative difference
-# 
-# #To obtain the absolute relative difference:
-# print('maximum of the abs relative def - hyd species conc')
-# print(max_diff1)
-# print('maximum of the abs relative def - hyd aerosol mass')
-# print(max_diff1)
-# print('minimum of the abs relative def - hyd species conc')
-# print(min_diff1)
-# print('minimum of the abs relative def - hyd aerosol mass')
-# print(min_diff1)
 
 main()

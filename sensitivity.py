@@ -16,6 +16,8 @@ from cmcrameri import cm
 # from gcpy.units import check_units, data_unit_is_mol_per_mol
 import os
 from joblib import Parallel, delayed
+from matplotlib import colors
+from matplotlib.colors import BoundaryNorm
 
 # Ignore warnings
 warnings.filterwarnings("ignore")
@@ -23,14 +25,17 @@ warnings.filterwarnings("ignore")
 # Reading Files
 
 root_path = '/glade/work/sakinjole/rundirs/gc_4x5_merra2_fullchem'
-species = 'NO2'
-specie1 = 'NO'
+species = 'NO'
+specie1 = 'O3'
 specie2 = 'NO2'
 duration = '20min'
-mechanism = 'fullchem_hemco_25'
+mechanism = 'fullchem_hemco_0.01'
 mechanism2 = 'fullchem_quad'
 pert_layer = '/allcells'  # else ground layer
 ptype = 'H'
+
+h1 = 0.0001
+hc = 0.0001
 
 print(mechanism)
 # A dictionary for species variables and indices to plot (This serves as the numerator)
@@ -39,8 +44,10 @@ print(mechanism)
 plot_species = {'CO': 251, 'SO4': 94, 'SO2': 95, 'NO2': 131, 'NO': 132, 'O3': 127,
                 'NH4': 135, 'NH3': 136, 'NIT': 134, 'HNO3': 217, 'HCl': 224, 'ISOP': 173}
 
-hemco_species = {'EmisNO2_Total': 10, 'EmisNO_Total': 11,
-                 'EmisNH3_Total': 12, 'EmisCO_Total': 20}
+#hemco_species = {'EmisSO4_Total': 3, 'EmisNO2_Total': 10, 'EmisNO_Total': 11,
+#                 'EmisNH3_Total': 12, 'EmisCO_Total': 20}
+                 
+hemco_species = {'EmisO3_Total': 10, 'EmisNO2_Total': 11, 'EmisNO_Total': 12, 'EmisHNO3_Total': 19}
 
 # emis_species = ?
 
@@ -87,6 +94,14 @@ def default_path(mechanism):
     real2 = xr.open_dataset(real_path2)
     hyd2 = xr.open_dataset(hyd_path2)
     return real1, hyd1, real2, hyd2
+    
+def def_path(mechanism):
+    # Folder paths default run
+    real_path = root_path + '/first_output/' + mechanism + '/' + \
+        duration + pert_layer + '/def' + specie1 + '/HEMCO_diagnostics.201907010000.nc'
+    # Read the arrays:
+    real = xr.open_dataset(real_path)
+    return real
 
 
 def main_path(ty, layer=''):  # where ty stands for the order of operation
@@ -308,6 +323,9 @@ elif ptype == 'H':
         'first', 'H')
     ref_reals, ref_perts, hyd_dx1s, hyd_dx2s, hyd_dx1x2s, perthyd_paths = full_path(
         'second', 'H')
+        
+    #Default file path
+    #ref_reald = def_path(mechanism)
 # full_path('second', 'A')
 # full_path('hybrid', 'A')
 
@@ -439,69 +457,50 @@ def first_order_finite(base, pert, h, pert_specie, ptype, useless, mode):
     return array, shape, specie
 
 
-def central_first_order(base, pert, h, pert_specie, ptype, useless, mode):
+def central_first_order(dec, inc, h, pert_specie, ptype, useless, mode):
     # Index to the species of interest
     # where h is the perturbation, pert_specie is the perturbed variable
 
     species_num = 0
     if ptype == 'H':
         # First, count the number of variables that satisfy the constraints
-        for i in base:
+        for i in dec:
             # Skip useless variables
             if i in useless:
                 continue
 
-            # For 'H' type, only consider variables with 'Total' in the name, or consider only ship
-            #if ptype == 'H' and 'Total' not in i:
-            if ptype == 'H' and 'Ship' not in i:
-                continue
-
 #            # Count only 4D variables
-#            if base[i].ndim == 4:
-            # Count only 3D variables
-            if base[i].ndim == 3:
+            if dec[i].ndim == 4:
                 species_num += 1
     else:
-        # number of variables, ignore useless variables
-        species_num = len(base) - 8
-#    time, lev, lat, lon = base[pert_specie].shape
-#    # array holding all variables
-#    array = np.zeros([species_num, time, lev, lat, lon])
-    time, lat, lon = base[pert_specie].shape
+#        # number of variables, ignore useless variables
+#    if ptype == 'H':
+#        species_num = len(base) - 4
+#    else:
+        species_num = len(dec) - 8
+    time, lev, lat, lon = dec[pert_specie].shape
     # array holding all variables
-    array = np.zeros([species_num, time, lat, lon])
+    array = np.zeros([species_num, time, lev, lat, lon])
     shape = array.shape
 
     ct = 0  # counter
     specie = []  # list of species names
 
-    for i in base:
+    for i in dec:
         if i in useless:
             continue
-        # if mode == 'A': #post process for units to ug/m3
-        #elif ptype == 'H' and 'Total' not in i:
-        elif ptype == 'H' and 'Ship' not in i:
-            continue
-        elif base[i].ndim == 3:
+
+        elif dec[i].ndim == 4:
             if mode == 'semi':
-                array[ct, :, :, :] = (
-                    pert[i] - base[i]) / (2 * h)  # multiplicative
+                array[ct, :, :, :, :] = (
+                    inc[i] - dec[i]) / (2 * h)  # multiplicative
             elif mode == 'normal':
-                array[ct, :, :, :] = (pert[i] - base[i]) / h
+                array[ct, :, :, :, :] = (inc[i] - dec[i]) / h
             # add variable name to list:
             specie.append(i)
             ct += 1
-#        elif base[i].ndim == 4:
-#            if mode == 'semi':
-#                array[ct, :, :, :, :] = (
-#                    pert[i] - base[i]) / (2 * h)  # multiplicative
-#            elif mode == 'normal':
-#                array[ct, :, :, :, :] = (pert[i] - base[i]) / h
-#            # add variable name to list:
-#            specie.append(i)
-#            ct += 1
 
-    return array, shape, specie, species_num
+    return array, shape, specie
 
 
 # Calculating Hyperdual sensitivities
@@ -516,25 +515,16 @@ def hyd_first_order(base, pert_specie, ptype, mode, useless, hyd_pert=1):
             if i in useless:
                 continue
 
-            # For 'H' type, only consider variables with 'Total' in the name, or consider only ship
-            #if ptype == 'H' and 'Total' not in i:
-            if ptype == 'H' and 'Ship' not in i:
-                continue
+            # Count only 4D variables
 
-#            # Count only 4D variables
-#            if base[i].ndim == 4:
-            # Count only 3D variables
-            if base[i].ndim == 3:
+            if base[i].ndim == 4:
                 species_num += 1
     else:
         # number of variables, ignore useless variables
         species_num = len(base) - 8
-#    time, lev, lat, lon = base[pert_specie].shape
-#    # array holding all variables
-#    array = np.zeros([species_num, time, lev, lat, lon])
-    time, lat, lon = base[pert_specie].shape
+    time, lev, lat, lon = base[pert_specie].shape
     # array holding all variables
-    array = np.zeros([species_num, time, lat, lon])
+    array = np.zeros([species_num, time, lev, lat, lon])
     shape = array.shape
 
     ct = 0  # counter
@@ -542,22 +532,12 @@ def hyd_first_order(base, pert_specie, ptype, mode, useless, hyd_pert=1):
     for i in base:
         if i in useless:
             continue
-
-        #elif ptype == 'H' and 'Total' not in i:
-        elif ptype == 'H' and 'Ship' not in i:
-            continue
-        elif base[i].ndim == 3:
-            array[ct, :, :, :] = base[i][:, :, :] / \
+        elif base[i].ndim == 4:
+            array[ct, :, :, :, :] = base[i][:, :, :, :] / \
                 hyd_pert  # semi normalization (multiplicative)
             # add variable name to list:
             specie.append(i)
             ct += 1
-#        elif base[i].ndim == 4:
-#            array[ct, :, :, :, :] = base[i][:, :, :, :] / \
-#                hyd_pert  # semi normalization (multiplicative)
-#            # add variable name to list:
-#            specie.append(i)
-#            ct += 1
 
     return array, shape, specie
 
@@ -565,25 +545,9 @@ def hyd_first_order(base, pert_specie, ptype, mode, useless, hyd_pert=1):
 def hybrid_second_order(base, pert, pert_specie, ptype, mode, useless, hc, h=1):
     # where pert represents the diagnostic with both real and dual perturbation, while base is the
     # only dual perturbation
-
-    species_num = 0
     if ptype == 'H':
-        # First, count the number of variables that satisfy the constraints
-        for i in base:
-            # Skip useless variables
-            if i in useless:
-                continue
-
-            # For 'H' type, only consider variables with 'Total' in the name, or consider only ship
-            #if ptype == 'H' and 'Total' not in i:
-            if ptype == 'H' and 'Ship' not in i:
-                continue
-
-#            # Count only 4D variables
-#            if base[i].ndim == 4:
-            # Count only 3D variables
-            if base[i].ndim == 3:
-                species_num += 1
+        # number of variables, ignore useless variables
+        species_num = len(base) - 4
     else:
         # number of variables, ignore useless variables
         species_num = len(base) - 8
@@ -599,20 +563,6 @@ def hybrid_second_order(base, pert, pert_specie, ptype, mode, useless, hc, h=1):
     for i in base:
         if i in useless:
             continue
-        elif ptype == 'H':
-            # if base[i].ndim != 4
-            if 'Total' not in i:
-                continue
-            else:
-                if mode == 'semi':
-                    # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
-                    array[ct, :, :, :, :] = (
-                        pert[i][:, :, :, :] / (hc*h*(hc-1))) - (base[i][:, :, :, :] / ((hc-1)*h))
-                elif mode == 'normal additive':
-                    array[ct, :, :, :, :] = (
-                        (pert[i][:, :, :, :] / h) - (base[i][:, :, :, :] / h)) / h1
-                # add variable name to list:
-                specie.append(i)
         else:
             if mode == 'semi':
                 # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
@@ -627,87 +577,26 @@ def hybrid_second_order(base, pert, pert_specie, ptype, mode, useless, hc, h=1):
 
     return array, shape, specie
 
-
-def central_hybrid_second_order(base, pert, pert_specie, ptype, mode, useless, hc, h=1):
+#dec: the netcdf array corresponding to the dx2 component of the decreased case
+#inc: the netcdf array corresponding to the dx2 component of the increased case
+#pert_specie: a variable name of the array
+def central_hybrid_second_order(dec, inc, pert_specie, ptype, mode, useless, hc, h=1):
     # where pert represents the diagnostic with both real and dual perturbation, while base is the
     # only dual perturbation
 
     species_num = 0
     if ptype == 'H':
         # First, count the number of variables that satisfy the constraints
-        for i in base:
+        for i in dec:
             # Skip useless variables
             if i in useless:
                 continue
-
-            # For 'H' type, only consider variables with 'Total' in the name, or consider only ship
-            #if ptype == 'H' and 'Total' not in i:
-            if ptype == 'H' and 'Ship' not in i:
-                continue
-
-#            # Count only 4D variables
-#            if base[i].ndim == 4:
-            # Count only 3D variables
-            if base[i].ndim == 3:
+            if dec[i].ndim == 4:
                 species_num += 1
     else:
         # number of variables, ignore useless variables
-        species_num = len(base) - 8
-#    time, lev, lat, lon = base[pert_specie].shape
-#    # array holding all variables
-#    array = np.zeros([species_num, time, lev, lat, lon])
-    time, lat, lon = base[pert_specie].shape
-    # array holding all variables
-    array = np.zeros([species_num, time, lat, lon])
-    shape = array.shape
-
-    # perturbation size
-
-    ct = 0  # counter
-    specie = []  # list of species names
-    for i in base:
-        if i in useless:
-            continue
-        #elif ptype == 'H' and 'Total' not in i:
-        elif ptype == 'H' and 'Ship' not in i:
-            continue
-        elif base[i].ndim == 3:
-            if mode == 'semi':
-                # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
-                array[ct, :, :, :] = (
-                    pert[i][:, :, :] / (2*hc*h*(1+hc))) - (base[i][:, :, :] / (2*h*hc*(1-hc)))
-            # elif mode == 'normal additive':
-#                 array[ct, :, :, :, :] = ((pert[i][:,:,:,:] / h) - (base[i][:,:,:,:] /h)) / h1
-            # add variable name to list:
-            specie.append(i)
-            ct += 1
-#        elif base[i].ndim == 4:
-#            if mode == 'semi':
-#                # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
-#                array[ct, :, :, :, :] = (
-#                    pert[i][:, :, :, :] / (2*hc*h*(1+hc))) - (base[i][:, :, :, :] / (2*h*hc*(1-hc)))
-#            # elif mode == 'normal additive':
-##                 array[ct, :, :, :, :] = ((pert[i][:,:,:,:] / h) - (base[i][:,:,:,:] /h)) / h1
-#            # add variable name to list:
-#            specie.append(i)
-#            ct += 1
-
-    return array, shape, specie
-
-
-def central_finite_second_order(base, pert, pert_specie, ptype, mode, useless, hc, h=1):
-    # where pert represents the diagnostic with both real and dual perturbation, while base is the
-    # only dual perturbation
-
-    if ptype == 'H':
-        # number of variables, ignore useless variables
-        species_num = len(base) - 4
-        # Use number of 'total' variables instead
-        species_num = 32
-    else:
-        # number of variables, ignore useless variables
-        species_num = len(base) - 8
-    time, lev, lat, lon = base[pert_specie].shape
+        species_num = len(dec) - 8
+    time, lev, lat, lon = dec[pert_specie].shape
     # array holding all variables
     array = np.zeros([species_num, time, lev, lat, lon])
     shape = array.shape
@@ -716,20 +605,60 @@ def central_finite_second_order(base, pert, pert_specie, ptype, mode, useless, h
 
     ct = 0  # counter
     specie = []  # list of species names
-    for i in base:
+    for i in dec:
         if i in useless:
             continue
-
-        else:
+        elif dec[i].ndim == 4:
             if mode == 'semi':
-                # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
                 array[ct, :, :, :, :] = (
-                    pert[i][:, :, :, :] / (2*hc*h*(1+hc))) - (base[i][:, :, :, :] / (2*h*hc*(1-hc)))
+                    inc[i][:, :, :, :] / (2*hc*h*(1+hc))) - (dec[i][:, :, :, :] / (2*h*hc*(1-hc)))
             # elif mode == 'normal additive':
 #                 array[ct, :, :, :, :] = ((pert[i][:,:,:,:] / h) - (base[i][:,:,:,:] /h)) / h1
             # add variable name to list:
             specie.append(i)
-        ct += 1
+            ct += 1
+
+    return array, shape, specie
+
+
+def central_finite_second_order(dec, base, inc, pert_specie, ptype, mode, useless, hc, h=1):
+    # where pert represents the diagnostic with both real and dual perturbation, while base is the
+    # only dual perturbation
+
+    species_num = 0
+    if ptype == 'H':
+        # First, count the number of variables that satisfy the constraints
+        for i in dec:
+            # Skip useless variables
+            if i in useless:
+                continue
+            if dec[i].ndim == 4:
+                species_num += 1
+    else:
+        # number of variables, ignore useless variables
+        species_num = len(dec) - 8
+    time, lev, lat, lon = dec[pert_specie].shape
+    # array holding all variables
+    array = np.zeros([species_num, time, lev, lat, lon])
+    shape = array.shape
+
+    # perturbation size
+
+    ct = 0  # counter
+    specie = []  # list of species names
+    for i in dec:
+        if i in useless:
+            continue
+
+        elif dec[i].ndim == 4:
+            if mode == 'semi':
+                # array[ct, :, :, :, :] = (pert[i][:,:,:,:] - base[i][:,:,:,:]) /((hc-1)*h)
+                array[ct, :, :, :, :] = (inc[i][:,:,:,:] - (2*base[i][:,:,:,:]) + dec[i][:,:,:,:]) / (hc*hc)
+            # elif mode == 'normal additive':
+#                 array[ct, :, :, :, :] = ((pert[i][:,:,:,:] / h) - (base[i][:,:,:,:] /h)) / h1
+            # add variable name to list:
+            specie.append(i)
+            ct += 1
 
     return array, shape, specie
 
@@ -745,26 +674,17 @@ def hyd_second_order(base, pert_specie, ptype, mode, useless, hyd_pert=1):
             # Skip useless variables
             if i in useless:
                 continue
-
-            # For 'H' type, only consider variables with 'Total' in the name, or consider only ship
-            #if ptype == 'H' and 'Total' not in i:
-            if ptype == 'H' and 'Ship' not in i:
-                continue
-
-#            # Count only 4D variables
-#            if base[i].ndim == 4:
-            # Count only 3D variables
-            if base[i].ndim == 3:
+            if base[i].ndim == 4:
                 species_num += 1
     else:
         # number of variables, ignore useless variables
         species_num = len(base) - 8
-#    time, lev, lat, lon = base[pert_specie].shape
-#    # array holding all variables
-#    array = np.zeros([species_num, time, lev, lat, lon])
-    time, lat, lon = base[pert_specie].shape
+    time, lev, lat, lon = base[pert_specie].shape
     # array holding all variables
-    array = np.zeros([species_num, time, lat, lon])
+    array = np.zeros([species_num, time, lev, lat, lon])
+#    time, lat, lon = base[pert_specie].shape
+#    # array holding all variables
+#    array = np.zeros([species_num, time, lat, lon])
     shape = array.shape
 
     ct = 0  # counter
@@ -772,25 +692,14 @@ def hyd_second_order(base, pert_specie, ptype, mode, useless, hyd_pert=1):
     for i in base:
         if i in useless:
             continue
-        #elif ptype == 'H' and 'Total' not in i:
-        elif ptype == 'H' and 'Ship' not in i:
-            continue
-        elif base[i].ndim == 3:
+        elif base[i].ndim == 4:
             if mode == 'semi':
-                array[ct, :, :, :] = base[i][:, :, :] / (hyd_pert**2.0)
+                array[ct, :, :, :, :] = base[i][:, :, :, :] / (hyd_pert**2.0)
             elif mode == 'normal additive':
-                array[ct, :, :, :] = base[i][:, :, :] / (hyd_pert**2.0)
+                array[ct, :, :, :, :] = base[i][:, :, :, :] / (hyd_pert**2.0)
             # add variable name to list:
             specie.append(i)
             ct += 1
-#        elif base[i].ndim == 4:
-#            if mode == 'semi':
-#                array[ct, :, :, :, :] = base[i][:, :, :, :] / (hyd_pert**2.0)
-#            elif mode == 'normal additive':
-#                array[ct, :, :, :, :] = base[i][:, :, :, :] / (hyd_pert**2.0)
-#            # add variable name to list:
-#            specie.append(i)
-#            ct += 1
 
     return array, shape, specie
 
@@ -816,10 +725,6 @@ def hybrid_cross_sensitivity(base, pert, pert_specie, ptype, mode, useless, hc, 
     for i in base:
         if i in useless:
             continue
-        # elif mode == 'A': #post process for units to ug/m3
-#             base[i] = base[i] / 1e+9
-#             pert[i] = pert[i] / 1e+9
-#             array[ct, :, :, :, :] = ((pert[i][:,:,:,:] / h) - (base[i][:,:,:,:] /h)) / h1
         else:
             array[ct, :, :, :, :] = (
                 (pert[i][:, :, :, :] / h) - (base[i][:, :, :, :] / h)) / ((hc - 1)*h)
@@ -892,9 +797,6 @@ def hyd_cross_sensitivity(base, pert_specie, ptype, useless, hyd_pert=1):
     for i in base:
         if i in useless:
             continue
-        # elif mode == 'A': #post process for units to ug/m3
-#             base[i] = base[i] / 1e+9
-#             array[ct, :, :, :, :] = base[i][:,:,:,:] / (hyd_pert**2.0)
         else:
             array[ct, :, :, :, :] = base[i][:, :, :, :] / (hyd_pert**2.0)
             # add variable name to list:
@@ -934,11 +836,13 @@ def analytical_second_order(base, pert_specie, useless):
 
 # def one_to_one(fd, hyd, mean, meanb, meanf, utype, fname, pert, t, sensitivity, x, y, z='', base='conc'):  #x
 # x and y are strings for bottom and up, t is simulation time
-def one_to_one(fd, hyd, utype, fname, pert, t, sensitivity, x, y, z='', base='conc'):
+def one_to_one(fd, hyd, utype, fname, pert, t, sensitivity, x, y, z='', base='conc',data=None):
 
     # Flatten the arrays:
     fd = fd.flatten()
     hyd = hyd.flatten()
+    if data is not None:
+        data = data.flatten()
 
     # t = '20min'
 #    ignored_calls = np.mean(mean)
@@ -986,15 +890,41 @@ def one_to_one(fd, hyd, utype, fname, pert, t, sensitivity, x, y, z='', base='co
 #     ax.yaxis.set_major_formatter(yfmt)
 #     ax.xaxis.set_major_formatter(yfmt)
 
-    # plot with colormap
-    cplot = ax.scatter(fd, hyd, c=hyd, cmap=cm.batlow)
+
+    # Assuming your data range is [vmin, vmax]
+    mask_c = data == 0 #Identify where data is zero
+    #Initialize all to white (RGBA [1,1,1,1])
+#    colors = np.ones((*data.shape, 4)) # Creating RGBA color array filled with white
+#    
+#    #Set non-zero values to blue
+#    blue_color = [0,0,1,1] #You can adjust shade of blue
+#    colors[~mask_c] = blue_color
+#    
+#
+#    # Create the scatterplot with the colors based on the 'data' array
+#    #cplot = ax.scatter(fd, hyd, c=colors, cmap=cm.batlow, norm=norm)
+#    cplot = ax.scatter(fd, hyd, c=colors.reshape(-1,4))
+    # Scatter plot with specified color and markers
+#    ax.scatter(fd[~mask_c], hyd[~mask_c], c='blue', label='Ship emission', marker='o', alpha=0.6)
+#    ax.scatter(fd[mask_c], hyd[mask_c], c='white', label='No ship emission', marker='o', alpha=0.6)
+
+    #plot with colormap
+    cplot = ax.scatter(fd, hyd, c=data, cmap='binary')
     if utype == 'S':
         cbar = plt.colorbar(cplot, ax=ax, label=r'ppb')
     elif utype == 'H':
         cbar = plt.colorbar(cplot, ax=ax, label=r'kg/m2/s')
     else:
-
         cbar = plt.colorbar(cplot, ax=ax, label=r'$\mu g / m^3$')
+#    cplot = ax.scatter(fd, hyd, c=hyd, cmap=cm.batlow)
+#    if utype == 'S':
+#        cbar = plt.colorbar(cplot, ax=ax, label=r'ppb')
+#    elif utype == 'H':
+#        cbar = plt.colorbar(cplot, ax=ax, label=r'kg/m2/s')
+#    else:
+#        cbar = plt.colorbar(cplot, ax=ax, label=r'$\mu g / m^3$')
+    
+
         # cbar = plt.colorbar(cplot, ax=ax, label=r'${ppb}^2$')
     # cbar = plt.colorbar(cplot, ax=ax, label=r'$\frac{{ppb}^2}{{ppb}^2}')
     # cbar = plt.colorbar(cplot, ax=ax)
@@ -1077,7 +1007,7 @@ def one_to_one(fd, hyd, utype, fname, pert, t, sensitivity, x, y, z='', base='co
                                                          "") + '})}_{(x,y,z,t=0hr)}} '
                           r'(E_{' + x.replace("SpeciesConc_", "") + '})$')
         elif sensitivity == 'second':
-            ax.set_xlabel(r'$\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}'
+            ax.set_xlabel(r'Hybrid $\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}'
                           r'{{{\partial (E_{' + x.replace("SpeciesConc_",
                                                           "") + '})}^2}_{(x,y,z,t=0hr)}}   '
                           r'{(E_{' + x.replace("SpeciesConc_", "") + '})}^2$')
@@ -1088,29 +1018,32 @@ def one_to_one(fd, hyd, utype, fname, pert, t, sensitivity, x, y, z='', base='co
 
     else:
         if sensitivity == 'first':
-            ax.set_xlabel(r'$\frac{{\partial (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
+            ax.set_xlabel(r'FD $\frac{{\partial (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
                           r'{{\partial [' +
                           x.replace("SpeciesConc_", "") +
                           ']}_{(x,y,z,t=0hr)}} '
                           r'[' + x.replace("SpeciesConc_", "") + ']$')
-            ax.set_ylabel(r'$\frac{{\partial (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
+            ax.set_ylabel(r'Hyd $\frac{{\partial (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
                           r'{{\partial [' +
                           x.replace("SpeciesConc_", "") +
                           ']}_{(x,y,z,t=0hr)}} '
                           r'[' + x.replace("SpeciesConc_", "") + ']$')
         elif sensitivity == 'second':
-            ax.set_xlabel(r'$\frac{{{\partial}^2 (E_{' + y.replace("Emis", "").replace("_",":q") + '})}_{(x,y,z,t=' + t + ')}}'
+            ax.set_xlabel(r'Hybrid $\frac{{{\partial}^2 (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
                           r'{{{\partial [' + x.replace("SpeciesConc_", "") +
                           ']}^2}_{(x,y,z,t=0hr)}}   '
                           r'{[' + x.replace("SpeciesConc_", "") + ']}^2$')
-            ax.set_ylabel(r'$\frac{{{\partial}^2 (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
+            ax.set_ylabel(r'Hyd $\frac{{{\partial}^2 (E_{' + y.replace("Emis", "").replace("_","\_") + '})}_{(x,y,z,t=' + t + ')}}'
                           r'{{{\partial [' + x.replace("SpeciesConc_", "") +
                           ']}^2}_{(x,y,z,t=0hr)}}   '
                           r'{[' + x.replace("SpeciesConc_", "") + ']}^2$')
 
     # ax.set_title(r'Graph of $\frac{\partial b}{\partial x}$')
     # ax.set_title(r'Graph of ${CO}^3$')
-    ax.set_title('Hemco simulation, 25% perturbation')
+    ax.legend()
+    ax.set_title('Hemco simulation, 0.01% perturbation')
+    # Add legend at the bottom right
+    ax.legend(loc='lower right')
     # ax.set_title(r'Hyd sensitivities against finite sensitivities')
     # previous: xy=(0.05, 0.7), fontsize=14
 #    ax.annotate('R$^2$ = {:0.3F}\nSlope = {:0.2F}\nIntercept = {:0.2E}\nBlack Line = 1:1\nIgnored Calls = {:0.3F}%\nForward calls = {:0.3F}%\nBackward calls = {:0.3F}%'ignored_calls, forward_calls, backward_calls)
@@ -1327,17 +1260,7 @@ def sum_check(base, pert, pert_specie, useless):
 
 
 def main():
-    # make the one-to-one plot: for Aerosolmass
-    # for i in range(8):
-    #         one_to_one(fd_sens[i, 0, 0, :, :], hyd_sens[i, 0, 0, :, :], 'one-to-one_1hr_aerosol_' + specie[i], sensitivity='first', x='AerMassNH4', y=specie[i])
 
-    # add a
-    # for i in range(307):
-    #          print(i)
-    #          print(specief[i])
-    #         one_to_one(fd_sens[i, 1, 0:39, :, :], hyd_sens[i, 1, 0:39, :, :], 'one-to-one_20min_fullchem_' + specie[i], sensitivity='cross', x='SpeciesConc_NO2', y=specie[i], z='SpeciesConc_OH')
-
-    # Running all plots at once for Species Conc
     if ptype == 'S':
         for i in plot_species.values():
 
@@ -1354,11 +1277,11 @@ def main():
 #          else:
 #              continue
             one_to_one(fd_sensf[i, 1, :, :, :], hyd_sensf[i, 1, :, :, :], 'S', 'one-to-one_' + duration + '_first_' + mechanism +
-                       '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + specie1, y=specief[i], base='emis')
+                       '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + specie1, y=specief[i], base='conc')
         # one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], isens[-1, :, :, :], 'S', 'one-to-one_' + duration + '_first_' + mechanism + '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + species, y=specief[i])
         # Second order
             one_to_one(fd_senss[i, 1, :, :, :], hyd_senss[i, 1, :, :, :], 'S', 'one-to-one_' + duration + '_second_' + mechanism +
-                       '_' + speciess[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=speciess[i], base='emis')
+                       '_' + speciess[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=speciess[i], base='conc')
         # one_to_one(fd_sensc[i, -1, :, :, :], hyd_sensc[i, -1, :, :, :], 'one-to-one_' + duration + '_cross_' + mechanism + '_' + speciec[i], pert_layer, duration, sensitivity='cross', x='SpeciesConc_' + species, y=speciec[i], z='SpeciesConc_' + specie2)
 
         # one_to_one(fd_senss[i, -1, :, :, :], hyd_senss[i, -1, :, :, :], 'one-to-one_' + duration + '_second_' + mechanism + '_' + species[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=species[i])
@@ -1378,26 +1301,26 @@ def main():
 
     elif ptype == 'H':
         # for i in range(171): #Hemco dx1
-        #for i in range(31):  # Hemco default
+        #for i in range(36):  # Hemco default
         #for i in hemco_species.values():
-        for i in range(species_num):
+        for i in hemco_species.values():
 
             print(i)
             print(specief[i])
 
-#            one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], 'H', 'one-to-one_' + duration + '_first_' + mechanism +
+            one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], 'H', 'one-to-one_' + duration + '_first_' + mechanism +
+                       '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + specie1, y=specief[i], base='hemco', data=ref_pertf['EmisHNO3_Total'][-1,:,:,:].values)
+        # one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], isens[-1, :, :, :], 'S', 'one-to-one_' + duration + '_first_' + mechanism + '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + species, y=specief[i])
+        # Second order
+            one_to_one(fd_senss[i, -1, :, :, :], hyd_senss[i, -1, :, :, :], 'H', 'one-to-one_' + duration + '_second_' + mechanism +
+                       '_' + speciess[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=speciess[i], base='hemco', data=ref_pertf['EmisHNO3_Total'][-1,:,:,:].values)
+
+#            one_to_one(fd_sensf[i, 0, :, :], hyd_sensf[i, 0, :, :], 'H', 'one-to-one_' + duration + '_first_' + mechanism +
 #                       '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + specie1, y=specief[i], base='hemco')
 #        # one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], isens[-1, :, :, :], 'S', 'one-to-one_' + duration + '_first_' + mechanism + '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + species, y=specief[i])
 #        # Second order
-#            one_to_one(fd_senss[i, -1, :, :, :], hyd_senss[i, -1, :, :, :], 'H', 'one-to-one_' + duration + '_second_' + mechanism +
+#            one_to_one(fd_senss[i, 0, :, :], hyd_senss[i, 0, :, :], 'H', 'one-to-one_' + duration + '_second_' + mechanism +
 #                       '_' + speciess[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=speciess[i], base='hemco')
-
-            one_to_one(fd_sensf[i, -1, :, :], hyd_sensf[i, -1, :, :], 'H', 'one-to-one_' + duration + '_first_' + mechanism +
-                       '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + specie1, y=specief[i], base='hemco')
-        # one_to_one(fd_sensf[i, -1, :, :, :], hyd_sensf[i, -1, :, :, :], isens[-1, :, :, :], 'S', 'one-to-one_' + duration + '_first_' + mechanism + '_' + specief[i], pert_layer, duration, sensitivity='first', x='SpeciesConc_' + species, y=specief[i])
-        # Second order
-            one_to_one(fd_senss[i, -1, :, :], hyd_senss[i, -1, :, :], 'H', 'one-to-one_' + duration + '_second_' + mechanism +
-                       '_' + speciess[i], pert_layer, duration, sensitivity='second', x='SpeciesConc_' + specie1, y=speciess[i], base='hemco')
 
 
 #             continue
@@ -1420,8 +1343,7 @@ def main():
 # hyd_sens, shape, specie_hyd = hyd_first_order(hyd_dx2, 'AerMassNH4dx2', 'A', useless, hyd_pert=1)
 # hyd_sens, shape, specie_hyd = hyd_first_order(hyd_dx2, 'SpeciesConcdx2_CO', 'S', useless, hyd_pert=1)
 # fd_sens, shape, specie = first_order_finite(ref_real, ref_pert, h, 'SpeciesConc_CO', useless, 'semi')
-h1 = 0.25
-hc = 0.25
+
 
 
 # Running all plots at once:
@@ -1466,14 +1388,18 @@ elif ptype == 'H':
 #        ref_reals, ref_perts, 'Emis' + species + '_Total', ptype, 'semi', useless, hc, h=1)
         
     hyd_sensf, shape, specie_hydf = hyd_first_order(
-        hyd_dx2f, 'Emis' + species + '_Ship', ptype, 'semi', useless, hyd_pert=1)
-    fd_sensf, shape, specief, species_num = central_first_order(
-        ref_realf, ref_pertf, h1, 'Emis' + species + '_Ship', ptype, useless, 'semi')
+        hyd_dx2f, 'Emis' + species + '_Total', ptype, 'semi', useless, hyd_pert=1)
+    fd_sensf, shape, specief = central_first_order(
+        ref_realf, ref_pertf, h1, 'Emis' + species + '_Total', ptype, useless, 'semi')
 
     hyd_senss, shape, specie_hyds = hyd_second_order(
-        hyd_dx1x2s, 'Emis' + species + '_Ship', ptype, 'semi', useless, hyd_pert=1)
+        hyd_dx1x2s, 'Emis' + species + '_Total', ptype, 'semi', useless, hyd_pert=1)
     fd_senss, shape, speciess = central_hybrid_second_order(
-        ref_reals, ref_perts, 'Emis' + species + '_Ship', ptype, 'semi', useless, hc, h=1)
+        ref_reals, ref_perts, 'Emis' + species + '_Total', ptype, 'semi', useless, hc, h=1)
+        
+#    fd_senssf, shape, speciess = central_finite_second_order(
+#        ref_reals, ref_reald, ref_perts, 'Emis' + species + '_Total', ptype, 'semi', useless, hc, h=1)
+        
 
 
 # hyd_sensc, shape, specie_hydc = hyd_cross_sensitivity(hyd_dx1x2c, 'SpeciesConcdx1x2_' + species, useless, hyd_pert=1)
@@ -1529,14 +1455,6 @@ diff = hyd_sensf - fd_sensf
 #    print("No indices with absolute difference greater than 1 found in any index timestep.")
 
 
-# Obtain the sensitivity mean
-# The percentage will be the same across all species, just one variable = ipercent
-# isens = ipercent['Ipercent'][:,:,:,:].values
-# isensb = ipercentb['Ipercent'][:,:,:,:].values
-# isensf = ipercentf['Ipercent'][:,:,:,:].values
-# isens2 = ipercent2['Ipercent'][:,:,:,:].values
-# isens2b = ipercent2b['Ipercent'][:,:,:,:].values
-# isens2f = ipercent2f['Ipercent'][:,:,:,:].values
 # #
 # # Print the indices
 # print("Indices with negative values:")
@@ -1567,202 +1485,5 @@ diff = hyd_sensf - fd_sensf
 # print("Hyd sensitivity of CO at layer 26 and index 19, 71")
 # print(hyd_sensf[251, -1, 26, 19, 71])
 #
-# hyd_sensc, shape, specie_hydc = hyd_cross_sensitivity(hyd_dx1x2c, 'SpeciesConcdx1x2_' +specie1, useless, hyd_pert=1)
-# fd_sensc, shape, speciec = hybrid_cross_sensitivity(ref_realc, ref_pertc, 'SpeciesConcdx2_' + specie1, 'semi', useless, hc, h=1)
-# def one_to_one1(ax, fd, hyd, mean, meanb, meanf, utype, fname, pert, t, sensitivity, x, y, z='', color='blue', finemask=None, coarsemask=None, finemask2b=None, finemask2f=None, coarsemask2b=None, coarsemask2f=None):
-#     # Flatten the arrays:
-#     fd = fd.flatten()
-#     hyd = hyd.flatten()
-#
-#     t = '1hr'
-#     ignored_calls = np.mean(mean)
-#     backward_calls = np.mean(meanb)
-#     forward_calls = np.mean(meanf)
-#
-#     # Helper function to flatten and check shapes
-#     def flatten_and_check_shape(array_names, *arrays):
-#         base_shape = arrays[0].shape
-#         flattened_arrays = []
-#         for idx, (arr, name) in enumerate(zip(arrays, array_names)):
-#             if arr.shape != base_shape:
-#                 raise ValueError(f"Shape mismatch at index {idx} for array '{name}': Expected {base_shape}, got {arr.shape}")
-#             flattened_arrays.append(arr.flatten())
-#         return flattened_arrays
-#
-#     # Flatten masks and check shapes
-#     if sensitivity == 'first':
-#         finemask_flat, coarsemask_flat = flatten_and_check_shape(['finemask', 'coarsemask'], finemask, coarsemask)
-#
-#         mask_fine = finemask_flat > 0
-#         mask_coarse = coarsemask_flat > 0
-#
-#         mask_no = ~(mask_fine | mask_coarse)
-#         mask_both = mask_fine & mask_coarse
-#
-#     elif sensitivity == 'second':
-#         array_names = ['finemask', 'coarsemask', 'finemask2', 'finemask2b', 'finemask2f', 'coarsemask2', 'coarsemask2b', 'coarsemask2f']
-#         finemask_flat, coarsemask_flat, finemask2b_flat, finemask2f_flat, coarsemask2b_flat, coarsemask2f_flat = flatten_and_check_shape(
-#             array_names, finemask, coarsemask, finemask2b, finemask2f, coarsemask2b, coarsemask2f
-#         )
-#
-#         mask_fine = (finemask_flat > 0) | (finemask2b_flat > 0) | (finemask2f_flat > 0)
-#         mask_coarse = (coarsemask_flat > 0) | (coarsemask2b_flat > 0) | (coarsemask2f_flat > 0)
-#
-#         mask_no = ~(mask_fine | mask_coarse)
-#         mask_both = mask_fine & mask_coarse
-#
-#         mask_fine_hyd = finemask_flat > 0
-#         mask_fine_fd = (finemask2b_flat > 0) | (finemask2f_flat > 0)
-#         mask_fine_combined = mask_fine_hyd | mask_fine_fd
-#         mask_coarse_combined = (coarsemask_flat > 0) | (coarsemask2b_flat > 0) | (coarsemask2f_flat > 0)
-#         mask_no_combined = ~(mask_fine_combined | mask_coarse_combined)
-#         mask_both_combined = mask_fine_combined & mask_coarse_combined
-#
-#     rangemin = min(np.nanmin(fd), np.nanmin(hyd))
-#     rangemax = max(np.nanmax(fd), np.nanmax(hyd))
-#     v = [rangemin, rangemax, rangemin, rangemax]
-#     print(f'The maximum is {rangemax:1.2f}.')
-#     print(f'The minimum is {rangemin:1.2f}.')
-#
-#     ax.axis(v)
-#
-#     # Plot the 1 to 1 line
-#     ax.plot([rangemin, rangemax], [rangemin, rangemax], 'k-')
-#
-#     # Scatter plot with specified color
-#     if sensitivity == 'first':
-#         ax.scatter(fd[mask_no], hyd[mask_no], c=color, label='No Mask', alpha=0.6)
-#         ax.scatter(fd[mask_fine & ~mask_coarse], hyd[mask_fine & ~mask_coarse], c='gold', edgecolors='k', marker='*', s=100, label='Fine Mask')
-#         ax.scatter(fd[mask_coarse & ~mask_fine], hyd[mask_coarse & ~mask_fine], c='cyan', edgecolors='k', marker='^', s=100, label='Coarse Mask')
-#         ax.scatter(fd[mask_both], hyd[mask_both], c='magenta', edgecolors='k', marker='x', s=100, label='Both Mask')
-#
-#     if sensitivity == 'second':
-#         ax.scatter(fd[mask_no_combined.flatten()], hyd[mask_no_combined.flatten()], c=color, label='No Mask', alpha=0.6)
-#         ax.scatter(fd[mask_fine_hyd.flatten() & ~mask_fine_fd.flatten()], hyd[mask_fine_hyd.flatten() & ~mask_fine_fd.flatten()], c='gold', edgecolors='k', marker='*', s=100, label='Mask Hyd')
-#         ax.scatter(fd[mask_fine_fd.flatten() & ~mask_fine_hyd.flatten()], hyd[mask_fine_fd.flatten() & ~mask_fine_hyd.flatten()], c='cyan', edgecolors='k', marker='^', s=100, label='Mask Hybrid')
-#         ax.scatter(fd[mask_both_combined.flatten()], hyd[mask_both_combined.flatten()], c='magenta', edgecolors='k', marker='x', s=100, label='Both Mask')
-#
-#     #ax.scatter(fd, hyd, cmap=color)
-#
-#     # Set axis conditions
-#     ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
-#     ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
-#
-#     # Mask of nan numbers and infinite numbers
-#     mask = ~np.isnan(fd) & ~np.isnan(hyd)
-#     slope, intercept, r_value, p_value, std_err = stats.linregress(fd[mask], hyd[mask])
-#
-#     # Defining axis and notations
-#     ax.minorticks_on()
-#     ax.yaxis.grid(True, which='major', color='black', linestyle='--', linewidth='0.4')
-#     ax.yaxis.grid(True, which='minor', color='gray', linestyle=':', linewidth='0.3')
-#     ax.xaxis.grid(True, which='major', color='black', linestyle='--', linewidth='0.4')
-#     ax.xaxis.grid(True, which='minor', color='gray', linestyle=':', linewidth='0.3')
-#
-#     if sensitivity == 'first':
-#         xlabel = (r'$\frac{{\partial [' + y.replace("SpeciesConc_", "") + ']}_{(x,y,z,t=' + t + ')}}'
-#                   r'{{\partial [' + x.replace("SpeciesConc_", "") + ']}_{(x,y,z,t=0hr)}} '
-#                   r'[' + x.replace("SpeciesConc_", "") + ']$')
-#         ylabel = (r'$\frac{{\partial [' + y.replace("SpeciesConc_", "") + ']}_{(x,y,z,t=' + t + ')}}'
-#                   r'{{\partial [' + x.replace("SpeciesConc_", "") + ']}_{(x,y,z,t=0hr)}} '
-#                   r'[' + x.replace("SpeciesConc_", "") + ']$')
-#     elif sensitivity == 'second':
-#         xlabel = (r'Hybrid $\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}'
-#                   r'{{{\partial [' + x.replace("SpeciesConc_", "") + ']}^2}_{(x,y,z,t=0hr)}}  '
-#                   r'{[' + x.replace("SpeciesConc_", "") + ']}^2$')
-#         ylabel = (r'Hyd $\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}'
-#                   r'{{{\partial [' + x.replace("SpeciesConc_", "") + ']}^2}_{(x,y,z,t=0hr)}}   '
-#                   r'{[' + x.replace("SpeciesConc_", "") + ']}^2$')
-#
-#     # ax.set_xlabel(r'Hybrid $\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}{{{\partial [' + x.replace("SpeciesConc_", "") + ']}^2}_{(x,y,z,t=0hr)}}  {[' + x.replace("SpeciesConc_", "") + ']}^2$')
-#     # ax.set_ylabel(r'Hyd $\frac{{{\partial}^2 [' + y.replace("SpeciesConcdx2_", "") + ']}_{(x,y,z,t=' + t + ')}}{{{\partial [' + x.replace("SpeciesConc_", "") + ']}^2}_{(x,y,z,t=0hr)}}   {[' + x.replace("SpeciesConc_", "") + ']}^2$')
-#
-#     ax.set_xlabel(xlabel)
-#     ax.set_ylabel(ylabel)
-#
-#     ax.legend()
-#
-#     # Add legend at the bottom right
-#     ax.legend(loc='lower right')
-#
-#    #  ax.annotate('R$^2$ = {:0.3F}\nSlope = {:0.2F}\nIntercept = {:0.2E}\nBlack Line = 1:1\nIgnored Calls = {:0.3F}%\nForward calls = {:0.3F}%\nBackward calls = {:0.3F}%'.format(r_value**2., slope, intercept, ignored_calls, forward_calls, backward_calls),
-# #                 xy=(0.05, 0.65), fontsize=12, fontweight='bold', xycoords='axes fraction',
-# #                 horizontalalignment='left', verticalalignment='bottom')
-#     ax.annotate('R$^2$ = {:0.3F}\nSlope = {:0.2F}\nIntercept = {:0.2E}'.format(r_value**2., slope, intercept, ignored_calls, forward_calls, backward_calls),
-#                 xy=(0.05, 0.65), fontsize=14, fontweight='bold', xycoords='axes fraction',
-#                 horizontalalignment='left', verticalalignment='bottom')
-# anal_sens, shape, speciea = analytical_second_order(ref_realf, 'SpeciesConc_CO', useless)
-
-# fd_sens = hybrid_cross_sensitivity(ref_real, ref_pert, 1)
-# hyd_sens = hyd_cross_sensitivity(hyd_pert, 1)
-
-# to store dimensions!
-# shaped = ref_realf['SpeciesConc_CO'].isel(time=0, lev=0)
-
-# For the sum plots:
-# Below lines not needed any more:
-# First Calculate the difference species conc
-# array1 = sum_abs(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-#
-# #Calculate the difference aerosolmass
-# array2 = sum_abs(default_file2, hyd_file2, 'PM10', useless)
-#
-# #Sum check for NH4 and NIT
-# array3 = sum_check(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-#
-# #Calculate the relative difference for species conc
-# array4 = absrel(default_file1, hyd_file1, 'SpeciesConc_' + specie1, useless)
-#
-# #Calculate the relative difference aerosolmass
-# array5 = absrel(default_file2, hyd_file2, 'PM10', useless)
-#
-# # Calculate the sum of absolute differences across all data variables
-# sum_diff1 = np.sum(np.abs(array1))
-# sum_diff2 = np.sum(np.abs(array2))
-# sum_diff3 = np.sum(np.abs(array3))
-#
-# #Obtain the max absolute relative difference:
-# #first obtain finite values:
-# finite_values1 = np.isfinite(array4)
-# finite_values2 = np.isfinite(array5)
-# # max_diff1 = np.max(np.abs(array4.where(finite_values1).values))
-# # max_diff2 = np.max(np.abs(array5.where(finite_values2).values))
-# max_diff1 = np.max(np.abs(array4[finite_values1]))
-# max_diff2 = np.max(np.abs(array5[finite_values2]))
-#
-# #Obtain the min absolute relative difference:
-# # min_diff1 = np.min(np.abs(array4.where(finite_values1).values))
-# # min_diff2 = np.min(np.abs(array5.where(finite_values2).values))
-# min_diff1 = np.min(np.abs(array4[finite_values1]))
-# min_diff2 = np.min(np.abs(array5[finite_values2]))
-#
-#
-# # # Specify the output filename
-# # output_filename = 'sum_diff.txt'
-# #
-# # # Save the sum_diff to the text file
-# # save_sum_diff_to_file(sum_diff, output_filename)
-#
-# #Print the absolute difference to the command window
-# print('sum of the abs of def - hyd species conc')
-# print(sum_diff1)
-# print('sum of the abs of def - hyd aerosol mass')
-# print(sum_diff2)
-# print('sum of the abs of def - hyd for NH4 and NIT in ppb')
-# print(sum_diff3)
-#
-# #Sum of base
-#
-# #Sum diff of 1 divided by sum of base to give the relative difference
-#
-# #To obtain the absolute relative difference:
-# print('maximum of the abs relative def - hyd species conc')
-# print(max_diff1)
-# print('maximum of the abs relative def - hyd aerosol mass')
-# print(max_diff1)
-# print('minimum of the abs relative def - hyd species conc')
-# print(min_diff1)
-# print('minimum of the abs relative def - hyd aerosol mass')
-# print(min_diff1)
 
 main()
